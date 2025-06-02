@@ -11,6 +11,7 @@ python app.py
 ```
 2. Find IP of your device
 3. Use cellphone(or any browser), visit `http://<Your device's IP>:8000`
+‼️Remember to use same Wi-Fi between device and
 
 ## Structure
 ```
