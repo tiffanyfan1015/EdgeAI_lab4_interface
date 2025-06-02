@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Who's there?</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; }
+    img { max-width: 200px; border-radius: 10px; }
+    .info { margin-top: 20px; }
+    .response { margin-top: 20px; font-style: italic; color: darkred; }
+  </style>
+</head>
+<body>
+  <h1>門神目前鎖定對象</h1>
+  <div id="content">載入中...</div>
+
+  <script>
+    async function loadActive() {
+      const res = await fetch("/active/state");
+      const data = await res.json();
+
+      if (!data.person_id) {
+        document.getElementById("content").innerHTML = "<p>目前沒有偵測到任何人。</p>";
+        return;
+      }
+
+      document.getElementById("content").innerHTML = `
+        <img src="${data.image_url}" alt="${data.name}"><br>
+        <div class="info">
+          <strong>Name:</strong> ${data.name}<br>
+          <strong>Description:</strong> ${data.description}<br>
+          <strong>identify time:</strong> ${new Date(data.updated_at).toLocaleString()}<br>
+        </div>
+        <div class="response">🤖 ${data.response}</div>
+      `;
+    }
+
+    setInterval(loadActive, 2000);
+    loadActive();
+  </script>
+</body>
+</html>

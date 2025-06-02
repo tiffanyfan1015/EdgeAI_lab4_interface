@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>Lab4 interface</title>
+  <style>
+    body {
+      font-family: "Noto Sans TC", sans-serif;
+      padding: 20px;
+      max-width: 1000px;
+      margin: auto;
+    }
+
+    h1, h2 {
+      color: #333;
+    }
+
+    form {
+      margin-bottom: 30px;
+    }
+
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+
+    input[type="file"] {
+      margin-bottom: 10px;
+    }
+
+    button {
+      padding: 10px 16px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .person-card {
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      padding: 15px;
+      margin: 10px;
+      width: 280px;
+      display: inline-block;
+      vertical-align: top;
+      text-align: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    img {
+      max-width: 150px;
+      border-radius: 8px;
+    }
+
+    .response {
+      margin-top: 10px;
+      color: #444;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <h1>上傳人臉資料</h1>
+
+  <form id="uploadForm" enctype="multipart/form-data">
+    <input type="text" name="name" placeholder="名字" required><br>
+    <textarea name="description" placeholder="描述" rows="4" required></textarea><br>
+    <input type="file" name="image" accept="image/*" required><br>
+    <button type="submit">送出</button>
+  </form>
+
+  <hr>
+
+  <h2>目前人物資料</h2>
+  <div id="personList"></div>
+
+  <script>
+    const uploadForm = document.getElementById("uploadForm");
+    const personList = document.getElementById("personList");
+
+    uploadForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const formData = new FormData(uploadForm);
+      const res = await fetch("/upload", {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+      alert(`✅ 上傳成功：ID=${data.person_id}`);
+      uploadForm.reset();
+      loadPersonList();
+    };
+
+    async function loadPersonList() {
+      const res = await fetch("/list");
+      const people = await res.json();
+      personList.innerHTML = "";
+
+      people.forEach(person => {
+        const card = document.createElement("div");
+        card.className = "person-card";
+
+        card.innerHTML = `
+          <img src="/image/${person.id}" alt="${person.name}"><br>
+          <strong>${person.name}</strong><br>
+          <small>${person.description}</small><br><br>
+          <button onclick="runInference(${person.id})">對我說句話</button>
+          <div class="response" id="response-${person.id}"></div>
+        `;
+
+        personList.appendChild(card);
+      });
+    }
+
+    async function runInference(id) {
+      const responseDiv = document.getElementById(`response-${id}`);
+      responseDiv.textContent = "🧠 思考中...";
+
+      try {
+        const res = await fetch("/inference", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ person_id: id })
+        });
+
+        const data = await res.json();
+        responseDiv.textContent = `🤖 ${data.response}`;
+      } catch (err) {
+        responseDiv.textContent = "⚠️ 取得語句失敗";
+        console.error(err);
+      }
+    }
+
+    window.onload = loadPersonList;
+  </script>
+</body>
+</html>
