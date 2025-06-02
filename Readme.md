@@ -45,3 +45,11 @@ LAB4_interface/
 | `/inference`     | POST | 輸入人物 ID，取得語言模型回應       |
 | `/active/update` | POST | 指定人物 ID，將其設為 active 狀態(模型Response可以接到這裡) |
 | `/active/state`  | GET  | 回傳目前 active 狀態資訊（JSON） |
+
+## 目前 data fromat
+```
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+name TEXT NOT NULL,
+description TEXT,
+image_path TEXT
+```
