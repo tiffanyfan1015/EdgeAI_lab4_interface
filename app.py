@@ -20,11 +20,21 @@ active_state = {
 
 app = Flask(__name__)
 
-# Load known face(s) #等等要再改
-tony_image = face_recognition.load_image_file("Yamamoto.jpg")
-tony_encoding = face_recognition.face_encodings(tony_image)[0]
-known_face_encodings = [tony_encoding]
-known_face_names = ["Yamamoto"]
+known_face_encodings = []
+known_face_names = []
+
+def load_known_face():
+    folder_path = './static/uploads/'
+
+    for filename in os.listdir(folder_path):
+        if filename.endswith(('.jpg', '.jpeg', '.png')):
+            image_path = os.path.join(folder_path, filename)
+            image = face_recognition.load_image_file(image_path)
+            encodings = face_recognition.face_encodings(image)
+
+            if len(encodings) > 0:
+                known_face_encodings.append(encodings[0])
+                known_face_names.append(os.path.splitext(filename)[0])
 
 # Initialize video capture
 video_capture = cv2.VideoCapture(0)
@@ -214,4 +224,5 @@ def video_feed():
 
 
 if __name__ == '__main__':
+    load_known_face()
     app.run(debug=True, host='0.0.0.0', port=8000)
