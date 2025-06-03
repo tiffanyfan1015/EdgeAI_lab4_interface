@@ -5,13 +5,20 @@
   <style>
     body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; }
     img { max-width: 200px; border-radius: 10px; }
+    #webcam { width: 100%; max-width: 720px; }
     .info { margin-top: 20px; }
     .response { margin-top: 20px; font-style: italic; color: darkred; }
   </style>
 </head>
 <body>
   <h1>Who's there?</h1>
+
+  <h2> Webcam </h2>
+  <img id="webcam" src="{{ url_for('video_feed') }}" alt="Webcam Stream">
+
+  <h2>People Info</h2>
   <div id="content">Loading...</div>
+  
 
   <script>
     async function loadActive() {
@@ -34,7 +41,7 @@
       `;
     }
 
-    setInterval(loadActive, 2000);
+    setInterval(loadActive, 3000);
     loadActive();
   </script>
 </body>
