@@ -10,8 +10,8 @@
   </style>
 </head>
 <body>
-  <h1>門神目前鎖定對象</h1>
-  <div id="content">載入中...</div>
+  <h1>Who's there?</h1>
+  <div id="content">Loading...</div>
 
   <script>
     async function loadActive() {
@@ -19,7 +19,7 @@
       const data = await res.json();
 
       if (!data.person_id) {
-        document.getElementById("content").innerHTML = "<p>目前沒有偵測到任何人。</p>";
+        document.getElementById("content").innerHTML = "<p>No one has been detected so far.</p>";
         return;
       }
 

@@ -61,18 +61,18 @@
   </style>
 </head>
 <body>
-  <h1>上傳人臉資料</h1>
+  <h1>Upload Facial Data</h1>
 
   <form id="uploadForm" enctype="multipart/form-data">
-    <input type="text" name="name" placeholder="名字" required><br>
-    <textarea name="description" placeholder="描述" rows="4" required></textarea><br>
+    <input type="text" name="name" placeholder="Name" required><br>
+    <textarea name="description" placeholder="Description" rows="4" required></textarea><br>
     <input type="file" name="image" accept="image/*" required><br>
-    <button type="submit">送出</button>
+    <button type="submit">Send</button>
   </form>
 
   <hr>
 
-  <h2>目前人物資料</h2>
+  <h2>Current character information</h2>
   <div id="personList"></div>
 
   <script>
@@ -87,7 +87,7 @@
         body: formData
       });
       const data = await res.json();
-      alert(`✅ 上傳成功：ID=${data.person_id}`);
+      alert(`Upload successfully:ID=${data.person_id}`);
       uploadForm.reset();
       loadPersonList();
     };
@@ -105,7 +105,7 @@
           <img src="/image/${person.id}" alt="${person.name}"><br>
           <strong>${person.name}</strong><br>
           <small>${person.description}</small><br><br>
-          <button onclick="runInference(${person.id})">對我說句話</button>
+          <button onclick="runInference(${person.id})"> Show response from LLM </button>
           <div class="response" id="response-${person.id}"></div>
         `;
 
@@ -115,7 +115,7 @@
 
     async function runInference(id) {
       const responseDiv = document.getElementById(`response-${id}`);
-      responseDiv.textContent = "🧠 思考中...";
+      responseDiv.textContent = "🧠 Thinking...";
 
       try {
         const res = await fetch("/inference", {
@@ -127,7 +127,7 @@
         const data = await res.json();
         responseDiv.textContent = `🤖 ${data.response}`;
       } catch (err) {
-        responseDiv.textContent = "⚠️ 取得語句失敗";
+        responseDiv.textContent = "Failed to get statement";
         console.error(err);
       }
     }

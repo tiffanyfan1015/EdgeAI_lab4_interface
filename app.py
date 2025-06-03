@@ -106,10 +106,8 @@ def inference():
     # Retrive image path
     img_path = person.image_path
     
-    # TODO: 這裡可以接 LLM 推論
-    prompt = "Describe this image in about 50 words in a humorous way."
-    # prompt = f"這是關於 {person.name} 的描述：\n{person.description}\n請幫我想一句毒舌歡迎語。"
-    # response = f"喔，又是你啊，{person.name}，你的臉我永遠忘不了（因為太難忘了）。"
+    # TODO: 這裡可以接 LLM ，Response或是prompt再融入一下description
+    prompt = f"This is the description of a person named {person.name} :{person.description}.\n Please tell me about him/her in a humorous way."
     response = llm_forward(img_path, prompt)
 
     return jsonify({
@@ -131,8 +129,9 @@ def update_active():
         return jsonify({"error": "Person not found"}), 404
 
     # Prepare prompt (Todo:接上我們LLM的Response)
-    prompt = f"這是關於 {person.name} 的描述：{person.description}\n請幫我想一句毒舌歡迎語。"
-    response_text = f"{person.name}，你終於來了，我還以為你在社交黑洞裡迷路了。"
+    img_path = person.image_path
+    prompt = f"This is the description of a person named {person.name} :{person.description}.\n Please tell me about him/her in a humorous way."
+    response_text = llm_forward(img_path, prompt)
 
     active_state.update({
         "updated_at": datetime.utcnow().isoformat(),

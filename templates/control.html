@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>手動觸發 Active</title>
+  <title> Manual Trigger Active</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
     .person-card {
@@ -17,13 +17,13 @@
   </style>
 </head>
 <body>
-  <h1>🔧 手動觸發 Active 狀態</h1>
+  <h1>🔧 Manually trigger the Active state</h1>
   {% for p in people %}
     <div class="person-card">
       <img src="/image/{{ p.id }}" alt="{{ p.name }}"><br>
       <strong>{{ p.name }}</strong><br>
       <small>{{ p.description }}</small><br><br>
-      <button onclick="triggerUpdate({{ p.id }})">設為 Active</button>
+      <button onclick="triggerUpdate({{ p.id }})">Set to Active</button>
     </div>
   {% endfor %}
 
@@ -36,7 +36,7 @@
       });
 
       const data = await res.json();
-      alert("已設為 Active: " + data.active.name);
+      alert("Already set to Active: " + data.active.name);
     }
   </script>
 </body>
