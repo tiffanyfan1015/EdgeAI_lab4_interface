@@ -1,7 +1,10 @@
 from flask import Flask, request, jsonify, send_from_directory, render_template
 from flask_sqlalchemy import SQLAlchemy
 import os
+import subprocess
 from datetime import datetime
+import subprocess
+
 
 #  Realtime response structure
 active_state = {
@@ -23,6 +26,16 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 # SQLite configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///./database.db'
 db = SQLAlchemy(app)
+
+def llm_forward(img_path, command):
+    ollama_command = "ollama run llava-phi3:3.8b"
+    img_path = ' \"' + img_path + '\" '
+
+    sent_command = ollama_command + img_path + command
+
+    result = subprocess.run(sent_command, capture_output=True, text=True, shell=True)
+
+    return result.stdout
 
 # data table model
 class Person(db.Model):
@@ -86,12 +99,18 @@ def inference():
     data = request.json
     person_id = data['person_id']
     person = Person.query.get(person_id)
+    
     if not person:
         return jsonify({"error": "Person not found"}), 404
 
+    # Retrive image path
+    img_path = person.image_path
+    
     # TODO: 這裡可以接 LLM 推論
-    prompt = f"這是關於 {person.name} 的描述：\n{person.description}\n請幫我想一句毒舌歡迎語。"
-    response = f"喔，又是你啊，{person.name}，你的臉我永遠忘不了（因為太難忘了）。"
+    prompt = "Describe this image in about 50 words in a humorous way."
+    # prompt = f"這是關於 {person.name} 的描述：\n{person.description}\n請幫我想一句毒舌歡迎語。"
+    # response = f"喔，又是你啊，{person.name}，你的臉我永遠忘不了（因為太難忘了）。"
+    response = llm_forward(img_path, prompt)
 
     return jsonify({
         "name": person.name,

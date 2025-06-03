@@ -5,12 +5,20 @@ Python 3.8+, Flask + SQLite
 pip install flask flask_sqlalchemy
 ```
 ## Step
-1. Run the server
+1. Install Ollama
+```
+curl -fsSL https://ollama.com/install.sh | sh
+```
+2. Pull the LLM, we use `llava-phi3:3.8b` in this project
+```
+ollama pull llava-phi3:3.8b
+```
+3. Run the server
 ```
 python app.py
 ```
-2. Find IP of your device
-3. Use cellphone(or any browser), visit `http://<Your device's IP>:8000`
+4. Find IP of your device
+5. Use cellphone(or any browser), visit `http://<Your device's IP>:8000`
 ‼️Remember to use same Wi-Fi between device and browser
 
 ## Structure
