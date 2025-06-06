@@ -20,25 +20,77 @@
   <div id="content">Loading...</div>
   
 
+  <div class="info-update" style="margin-top: 15px;">
+    <label for="active_amount_owed_input">Update amount owed:</label>
+    <input type="number" id="active_amount_owed_input" style="width: 100px; margin-right: 10px;">
+    <button onclick="updateActivePersonDebt()">Update</button>
+    <p id="update_status_message" style="font-size: 0.9em; color: green;"></p>
+  </div>
+
   <script>
+    let currentActivePersonId = null;
+
     async function loadActive() {
       const res = await fetch("/active/state");
       const data = await res.json();
+      const contentDiv = document.getElementById("content");
+      const amountInput = document.getElementById("active_amount_owed_input");
+      const statusMessage = document.getElementById("update_status_message");
+      statusMessage.textContent = "";
 
       if (!data.person_id) {
         document.getElementById("content").innerHTML = "<p>No one has been detected so far.</p>";
         return;
       }
 
+      currentActivePersonId = data.person_id;
       document.getElementById("content").innerHTML = `
         <img src="${data.image_url}" alt="${data.name}"><br>
         <div class="info">
           <strong>Name:</strong> ${data.name}<br>
+          <strong>Owe me:</strong> ${data.amount_owed}<br>
           <strong>Description:</strong> ${data.description}<br>
           <strong>identify time:</strong> ${new Date(data.updated_at).toLocaleString()}<br>
         </div>
         <div class="response">🤖 ${data.response}</div>
       `;
+      amountInput.value = data.amount_owed;
+    }
+
+    async function updateActivePersonDebt() {
+      const statusMessage = document.getElementById("update_status_message");
+      if (currentActivePersonId === null) {
+        statusMessage.textContent = "Error：No active person can be updated";
+        statusMessage.style.color = "red";
+        return;
+      }
+      const newAmount = document.getElementById("active_amount_owed_input").value;
+        if (newAmount === "" || isNaN(parseInt(newAmount))) {
+          statusMessage.textContent = "Error：Please type in valid value!";
+          statusMessage.style.color = "red";
+          return;
+        }
+
+        try {
+          const res = await fetch(`/person/update_debt/${currentActivePersonId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ amount_owed: parseInt(newAmount) })
+          });
+          const result = await res.json();
+          if (res.ok && result.status === "success") {
+            statusMessage.textContent = `${result.name}'s money-owed has been updated to ${result.new_amount_owed}！`;
+            statusMessage.style.color = "green";
+            loadActive(); // reload active state to check the updates
+            } else {
+                statusMessage.textContent = `Error: Update Failed! ${result.message || ''}`;
+                statusMessage.style.color = "red";
+            }
+        } catch (err) {
+            statusMessage.textContent = `Error: Request Failed! ${err}`;
+            statusMessage.style.color = "red";
+            console.error("Error updating debt:", err);
+        }
     }
 
     setInterval(loadActive, 3000);

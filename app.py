@@ -1,12 +1,38 @@
-from flask import Flask, request, jsonify, send_from_directory, render_template, Response
+from flask import Flask, request, jsonify, send_from_directory, render_template, Response, url_for
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.utils import secure_filename
 import os
 import subprocess
-from datetime import datetime
-import subprocess
+from datetime import datetime, timezone
 import cv2
 import face_recognition
+import numpy as np
+import time
+import threading
 
+# --- GPIO (Buzzer) Setup ---
+GPIO_AVAILABLE = False
+BUZZER_PIN = 17  # Change to your actual BCM GPIO pin
+try:
+    import RPi.GPIO as GPIO
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setwarnings(False)
+    GPIO.setup(BUZZER_PIN, GPIO.OUT)
+    GPIO.output(BUZZER_PIN, GPIO.LOW)
+    GPIO_AVAILABLE = True
+except Exception:
+    print("WARNING: GPIO initialization failed. Buzzer is disabled.")
+
+app = Flask(__name__)
+
+# Configuration of photo upload folders
+UPLOAD_FOLDER = 'static/uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# SQLite configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///./database.db'
+db = SQLAlchemy(app)
 
 #  Realtime response structure
 active_state = {
@@ -17,14 +43,17 @@ active_state = {
     "image_url": None,
     "response": None
 }
-
-app = Flask(__name__)
-
+# Global variables for face recognition
 known_face_encodings = []
 known_face_names = []
+# Initialize video capture
+video_capture = cv2.VideoCapture(0)
 
 def load_known_face():
     folder_path = './static/uploads/'
+    global known_face_encodings, known_face_names
+    known_face_encodings.clear()
+    known_face_names.clear()
 
     for filename in os.listdir(folder_path):
         if filename.endswith(('.jpg', '.jpeg', '.png')):
@@ -36,73 +65,99 @@ def load_known_face():
                 known_face_encodings.append(encodings[0])
                 known_face_names.append(os.path.splitext(filename)[0])
 
-# Initialize video capture
-video_capture = cv2.VideoCapture(0)
+def activate_buzzer(beeps=3):
+    """Activates the buzzer if GPIO is available."""
+    if not GPIO_AVAILABLE: return
+    print(f"Buzzer: Activating {beeps} beeps.")
+    try:
+        for _ in range(beeps):
+            GPIO.output(BUZZER_PIN, GPIO.HIGH); time.sleep(0.15)
+            GPIO.output(BUZZER_PIN, GPIO.LOW); time.sleep(0.15)
+    except Exception as e:
+        print(f"Buzzer Error: {e}")
 
-# Configuration of photo upload folders
-UPLOAD_FOLDER = 'static/uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+def llm_forward(prompt):
+    command = ["ollama", "run", "gemma:2b", prompt]
+    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=180)
 
-# SQLite configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///./database.db'
-db = SQLAlchemy(app)
+    return result.stdout.strip()
 
-def llm_forward(img_path, command):
-    ollama_command = "ollama run llava-phi3:3.8b"
-    img_path = ' \"' + img_path + '\" '
-
-    sent_command = ollama_command + img_path + command
-
-    result = subprocess.run(sent_command, capture_output=True, text=True, shell=True)
-
-    return result.stdout
+# Avoid blocking the main thread with LLM calls
+def update_llm_response_in_background(person_id, name, amount_owed):
+    """Generates LLM response in a background thread to keep UI responsive."""
+    global active_state
+    prompt = (f"This person, {name}, currently owes {amount_owed}. "
+              f"Generate a very short, witty, or advisory comment about this financial situation. "
+              f"Keep it to one or two concise sentences.")
+    llm_response = llm_forward(prompt)
+    if active_state.get("person_id") == person_id:
+        active_state["response"] = llm_response
+        active_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+        print(f"Background LLM Thread: Response updated for {name}.")
 
 def gen_frames():
+    global active_state
+    if not video_capture: return
+    
     while True:
         success, frame = video_capture.read()
-        if not success:
-            break
+        if not success: time.sleep(0.5); continue
 
         # Resize for performance
         small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
         rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-
+        
         face_locations = face_recognition.face_locations(rgb_small_frame)
         face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+        for face_encoding in face_encodings:
+            matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance=0.6)
+            if True in matches:
+                best_match_index = np.argmin(face_recognition.face_distance(known_face_encodings, face_encoding))
+                if matches[best_match_index]:
+                    recognized_name = known_face_names[best_match_index]
+                    break 
 
-        for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-            distances = face_recognition.face_distance(known_face_encodings, face_encoding)
-            best_match_index = distances.argmin()
+        recognized_name = None
+        person_to_activate = None
 
-            if distances[best_match_index] < 0.5:
-                name = known_face_names[best_match_index]
+        if recognized_name:
+            with app.app_context():
+                person_in_db = Person.query.filter_by(name=recognized_name).first()
+            if person_in_db and person_in_db.id != active_state.get("person_id"):
+                person_to_activate = person_in_db
+        
+        if person_to_activate:
+            print(f"Camera: New person detected: {person_to_activate.name}")
+            active_state.update({
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "person_id": person_to_activate.id, "name": person_to_activate.name,
+                "amount_owed": person_to_activate.amount_owed,
+                "image_url": f"/image/{person_to_activate.id}",
+                "response": "🤖 Generating response..."
+            })
+            if person_to_activate.amount_owed > 30000:
+                activate_buzzer(beeps=3)
+            
+            threading.Thread(
+                target=update_llm_response_in_background,
+                args=(person_to_activate.id, person_to_activate.name, person_to_activate.amount_owed)
+            ).start()
 
-                # Scale back up
-                top *= 4
-                right *= 4
-                bottom *= 4
-                left *= 4
-
-                # Draw box and label
-                cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-                cv2.rectangle(frame, (left, bottom - 20), (right, bottom), (0, 255, 0), cv2.FILLED)
-                cv2.putText(frame, name, (left + 4, bottom - 6),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1)
+        # Draw boxes on frame for display
+        for (top, right, bottom, left) in face_locations:
+            top *= 4; right *= 4; bottom *= 4; left *= 4
+            cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
 
         # Convert frame to JPEG
         ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-
-        # Use MJPEG stream
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        if ret:
+            yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
 # data table model
 class Person(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    amount_owed = db.Column(db.Integer, nullable=True, default=0)
     image_path = db.Column(db.String(200))
 
 with app.app_context():
@@ -120,23 +175,38 @@ def data_page():
 @app.route('/upload', methods=['POST'])
 def upload():
     name = request.form.get('name')
-    description = request.form.get('description')
+    amount_owed_str = request.form.get('amount_owed', '0')
     image = request.files.get('image')
 
-    image_filename = f"{name}.jpg"
-    image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_filename)
-    image.save(image_path)
-
-    person = Person(name=name, description=description, image_path=image_path)
-    db.session.add(person)
-    db.session.commit()
-
-    return jsonify({"status": "success", "person_id": person.id})
+    if not name or not image:
+        return jsonify({"status": "error", "message": "Name and image are required"}), 400
+    
+    try:
+        amount_owed = int(amount_owed_str)
+        filename = f"{secure_filename(name)}.{image.filename.rsplit('.', 1)[1].lower()}"
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        image.save(image_path)
+        
+        with app.app_context():
+            person = Person.query.filter_by(name=name).first()
+            if person:
+                person.amount_owed = amount_owed
+                person.image_path = filename
+            else:
+                person = Person(name=name, amount_owed=amount_owed, image_path=filename)
+                db.session.add(person)
+            db.session.commit()
+        
+        load_known_face()
+        return jsonify({"status": "success", "person_id": person.id})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # List all people
 @app.route('/list', methods=['GET'])
 def list_people():
-    people = Person.query.all()
+    with app.app_context(): people = Person.query.all()
     return jsonify([
         {
             "id": p.id,
@@ -149,61 +219,56 @@ def list_people():
 # show image
 @app.route('/image/<int:person_id>', methods=['GET'])
 def get_image(person_id):
-    person = Person.query.get(person_id)
+    with app.app_context(): person = db.session.get(Person, person_id)
     if not person:
         return "Not found", 404
     return send_from_directory(app.config['UPLOAD_FOLDER'], os.path.basename(person.image_path))
 
-# inference
-@app.route('/inference', methods=['POST'])
-def inference():
-    data = request.json
-    person_id = data['person_id']
-    person = Person.query.get(person_id)
-    
-    if not person:
-        return jsonify({"error": "Person not found"}), 404
-
-    # Retrive image path
-    img_path = person.image_path
-    
-    # TODO: 這裡可以接 LLM ，Response或是prompt再融入一下description
-    prompt = f"This is the description of a person named {person.name} :{person.description}.\n Please tell me about him/her in a humorous way."
-    response = llm_forward(img_path, prompt)
-
-    return jsonify({
-        "name": person.name,
-        "prompt": prompt,
-        "response": response
-    })
-
 @app.route('/active/update', methods=['POST'])
 def update_active():
+    global active_state
     data = request.json
     person_id = data.get("person_id")
 
-    if person_id == active_state.get("person_id"):
-        return jsonify({"status": "no change", "active": active_state})
+    with app.app_context():
+        person = db.session.get(Person, person_id)
+        if not person: return jsonify({"error": "Person not found"}), 404
 
-    person = Person.query.get(person_id)
-    if not person:
-        return jsonify({"error": "Person not found"}), 404
+        print(f"Manually updating active state to: {person.name}")
+        active_state.update({
+            "updated_at": datetime.now(timezone.utc).isoformat(), "person_id": person.id,
+            "name": person.name, "amount_owed": person.amount_owed,
+            "image_url": url_for('get_image', person_id=person.id),
+            "response": "🤖 Generating response..."
+        })
 
-    # Prepare prompt (Todo:接上我們LLM的Response)
-    img_path = person.image_path
-    prompt = f"This is the description of a person named {person.name} :{person.description}.\n Please tell me about him/her in a humorous way."
-    response_text = llm_forward(img_path, prompt)
+        if person.amount_owed > 30000:
+            activate_buzzer(beeps=3)
+        
+        threading.Thread(target=update_llm_response_in_background, args=(person.id, person.name, person.amount_owed)).start()
+    return jsonify({"status": "active manually updated", "active": active_state})
 
-    active_state.update({
-        "updated_at": datetime.utcnow().isoformat(),
-        "person_id": person.id,
-        "name": person.name,
-        "description": person.description,
-        "image_url": f"/image/{person.id}",
-        "response": response_text
-    })
-
-    return jsonify({"status": "active updated", "active": active_state})
+@app.route('/person/update_debt/<int:person_id>', methods=['POST'])
+def update_person_debt(person_id):
+    """Allows updating a person's debt from the UI."""
+    global active_state
+    try:
+        new_amount = int(request.json.get('amount_owed'))
+        with app.app_context():
+            person = db.session.get(Person, person_id)
+            if not person: return jsonify({"status": "error", "message": "Person not found"}), 404
+            
+            person.amount_owed = new_amount
+            db.session.commit()
+            
+            if active_state.get("person_id") == person_id:
+                active_state["amount_owed"] = new_amount
+                active_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+            
+            return jsonify({"status": "success", "name": person.name, "new_amount_owed": new_amount})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/active/state', methods=['GET'])
 def get_active_state():
@@ -215,7 +280,7 @@ def show_active():
 
 @app.route('/control')
 def control_panel():
-    people = Person.query.all()
+    with app.app_context(): people = Person.query.all()
     return render_template("control.html", people=people)
 
 @app.route('/video_feed')
@@ -224,5 +289,15 @@ def video_feed():
 
 
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+
     load_known_face()
-    app.run(debug=True, host='0.0.0.0', port=8000)
+    try:
+        app.run(host='0.0.0.0', port=8000, debug=False, threaded=True)
+    finally:
+        if video_capture:
+            video_capture.release()
+            print("Camera released.")
+        if GPIO_AVAILABLE:
+            GPIO.cleanup()

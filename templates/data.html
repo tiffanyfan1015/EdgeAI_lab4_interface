@@ -65,7 +65,7 @@
 
   <form id="uploadForm" enctype="multipart/form-data">
     <input type="text" name="name" placeholder="Name" required><br>
-    <textarea name="description" placeholder="Description" rows="4" required></textarea><br>
+    <input type="number" name="amount_owed"  placeholder="Amount Owed" required></textarea><br>
     <input type="file" name="image" accept="image/*" required><br>
     <button type="submit">Send</button>
   </form>
@@ -104,32 +104,11 @@
         card.innerHTML = `
           <img src="/image/${person.id}" alt="${person.name}"><br>
           <strong>${person.name}</strong><br>
-          <small>${person.description}</small><br><br>
-          <button onclick="runInference(${person.id})"> Show response from LLM </button>
-          <div class="response" id="response-${person.id}"></div>
+          <small>${person.amount_owed}</small><br><br>
         `;
 
         personList.appendChild(card);
       });
-    }
-
-    async function runInference(id) {
-      const responseDiv = document.getElementById(`response-${id}`);
-      responseDiv.textContent = "🧠 Thinking...";
-
-      try {
-        const res = await fetch("/inference", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ person_id: id })
-        });
-
-        const data = await res.json();
-        responseDiv.textContent = `🤖 ${data.response}`;
-      } catch (err) {
-        responseDiv.textContent = "Failed to get statement";
-        console.error(err);
-      }
     }
 
     window.onload = loadPersonList;

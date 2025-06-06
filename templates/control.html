@@ -22,7 +22,7 @@
     <div class="person-card">
       <img src="/image/{{ p.id }}" alt="{{ p.name }}"><br>
       <strong>{{ p.name }}</strong><br>
-      <small>{{ p.description }}</small><br><br>
+      <small>{{ p.amount_owed }}</small><br><br>
       <button onclick="triggerUpdate({{ p.id }})">Set to Active</button>
     </div>
   {% endfor %}
