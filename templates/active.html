@@ -8,6 +8,7 @@
     #webcam { width: 100%; max-width: 720px; }
     .info { margin-top: 20px; }
     .response { margin-top: 20px; font-style: italic; color: darkred; }
+    
   </style>
 </head>
 <body>
@@ -19,12 +20,20 @@
   <h2>People Info</h2>
   <div id="content">Loading...</div>
   
+  <div class="update-section">
+    <div class="info-update">
+      <label for="active_amount_owed_input">Update amount owed:</label>
+      <input type="number" id="active_amount_owed_input" style="width: 100px; margin-right: 10px;">
+      <button onclick="updateActivePersonDebt()">Update</button>
+    </div>
 
-  <div class="info-update" style="margin-top: 15px;">
-    <label for="active_amount_owed_input">Update amount owed:</label>
-    <input type="number" id="active_amount_owed_input" style="width: 100px; margin-right: 10px;">
-    <button onclick="updateActivePersonDebt()">Update</button>
-    <p id="update_status_message" style="font-size: 0.9em; color: green;"></p>
+    <div class="info-update">
+      <label for="active_description_input">Update description:</label>
+      <textarea id="active_description_input" rows="3"></textarea>
+      <button onclick="updateActivePersonDescription()">Update</button>
+    </div>
+
+    <p id="update_status_message" style="font-size: 0.9em; color: green; clear: both; padding-top: 10px;"></p>
   </div>
 
   <script>
@@ -35,11 +44,15 @@
       const data = await res.json();
       const contentDiv = document.getElementById("content");
       const amountInput = document.getElementById("active_amount_owed_input");
+      const descriptionInput = document.getElementById("active_description_input");
       const statusMessage = document.getElementById("update_status_message");
       statusMessage.textContent = "";
 
       if (!data.person_id) {
         document.getElementById("content").innerHTML = "<p>No one has been detected so far.</p>";
+        amountInput.value = "";
+        descriptionInput.value = "";
+        currentActivePersonId = null;
         return;
       }
 
@@ -49,12 +62,12 @@
         <div class="info">
           <strong>Name:</strong> ${data.name}<br>
           <strong>Owe me:</strong> ${data.amount_owed}<br>
-          <strong>Description:</strong> ${data.description}<br>
           <strong>identify time:</strong> ${new Date(data.updated_at).toLocaleString()}<br>
         </div>
         <div class="response">🤖 ${data.response}</div>
       `;
       amountInput.value = data.amount_owed;
+      descriptionInput.value = data.description || '';
     }
 
     async function updateActivePersonDebt() {
@@ -90,6 +103,45 @@
             statusMessage.textContent = `Error: Request Failed! ${err}`;
             statusMessage.style.color = "red";
             console.error("Error updating debt:", err);
+        }
+    }
+    
+    async function updateActivePersonDescription() {
+        const statusMessage = document.getElementById("update_status_message");
+        if (currentActivePersonId === null) {
+            statusMessage.textContent = "Error: No active person to update.";
+            statusMessage.style.color = "red";
+            return;
+        }
+
+        const newDescription = document.getElementById("active_description_input").value;
+        if (newDescription.trim() === "") {
+            statusMessage.textContent = "Error: Description cannot be empty.";
+            statusMessage.style.color = "red";
+            return;
+        }
+
+        try {
+            const res = await fetch(`/person/update_description/${currentActivePersonId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ description: newDescription })
+            });
+            const result = await res.json();
+
+            if (res.ok && result.status === "success") {
+                statusMessage.textContent = `${result.name}'s description has been updated!`;
+                statusMessage.style.color = "green";
+                // No need to reload, as the change is saved in the background.
+                // The next LLM inference will use the new description.
+            } else {
+                statusMessage.textContent = `Error: Update Failed! ${result.message || ''}`;
+                statusMessage.style.color = "red";
+            }
+        } catch (err) {
+            statusMessage.textContent = `Error: Request Failed! ${err}`;
+            statusMessage.style.color = "red";
+            console.error("Error updating description:", err);
         }
     }
 

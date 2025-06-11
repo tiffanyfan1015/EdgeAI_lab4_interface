@@ -19,11 +19,12 @@
       margin-bottom: 30px;
     }
 
-    input[type="text"], textarea {
+    input[type="text"], input[type="number"], textarea {
       width: 100%;
       padding: 8px;
       margin-bottom: 10px;
       font-size: 16px;
+      box-sizing: border-box;
     }
 
     input[type="file"] {
@@ -53,6 +54,15 @@
       border-radius: 8px;
     }
 
+    .person-card .description {
+        font-size: 0.9em;
+        color: #555;
+        min-height: 40px; /* Give some space even if description is short */
+        text-align: left;
+        padding: 0 5px;
+        word-wrap: break-word;
+    }
+
     .response {
       margin-top: 10px;
       color: #444;
@@ -65,11 +75,14 @@
 
   <form id="uploadForm" enctype="multipart/form-data">
     <input type="text" name="name" placeholder="Name" required><br>
-    <input type="number" name="amount_owed"  placeholder="Amount Owed" required></textarea><br>
+    <textarea name="description" placeholder="Description (e.g., relationship, context)"></textarea><br>
+    <input type="number" name="amount_owed"  placeholder="Amount Owed" required><br>
     <input type="file" name="image" accept="image/*" required><br>
     <button type="submit">Send</button>
   </form>
-
+  <div style="text-align: center;">
+    <a href="{{ url_for('index') }}">Back to home page</a>
+  </div>
   <hr>
 
   <h2>Current character information</h2>
@@ -104,11 +117,36 @@
         card.innerHTML = `
           <img src="/image/${person.id}" alt="${person.name}"><br>
           <strong>${person.name}</strong><br>
-          <small>${person.amount_owed}</small><br><br>
+          <small>Owes me: ${person.amount_owed}</small><br>
+          <p class="description">${person.description || 'No description provided.'}</p>
+          <button onclick="runInference(${person.id})">Generate Response</button>
+          <div class="response" id="response-${person.id}"></div>
         `;
 
         personList.appendChild(card);
       });
+    }
+    async function runInference(personId) {
+      const responseDiv = document.getElementById(`response-${personId}`);
+      responseDiv.textContent = "🧠 Thinking...";
+
+      try {
+        const res = await fetch("/inference", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ person_id: personId }) 
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          responseDiv.textContent = `🤖 ${data.response}`;
+        } else {
+          responseDiv.textContent = `Error: ${data.response || data.error || 'Unknown error'}`;
+        }
+      } catch (err) {
+        responseDiv.textContent = "Request Failed.";
+        console.error("Error during inference:", err);
+      }
     }
 
     window.onload = loadPersonList;
